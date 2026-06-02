@@ -126,3 +126,4 @@ dist
 /test/hbConfig
 
 .venv
+.hon-data
