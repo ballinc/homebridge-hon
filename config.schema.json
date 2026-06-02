@@ -1,8 +1,9 @@
 {
-  "pluginAlias": "HonWineCooler",
+  "pluginAlias": "HomebridgeHON",
   "pluginType": "platform",
   "singular": true,
   "strictValidation": false,
+  "headerDisplay": "Configure this plugin in the Homebridge UI Config Editor.\n\nRequired fields:\n1. `name`\n2. `email`\n3. `password`\n\nOptional fields let you tune the accessory name, polling interval, and Python bridge settings.",
   "schema": {
     "type": "object",
     "required": [
@@ -21,6 +22,7 @@
       "email": {
         "title": "hOn Email",
         "type": "string",
+        "format": "email",
         "description": "Email address used to sign in to the hOn app."
       },
       "password": {
