@@ -5,33 +5,53 @@
   "strictValidation": false,
   "schema": {
     "type": "object",
-    "required": ["name"],
-    "additionalProperties": false,
+    "required": [
+      "name",
+      "email",
+      "password"
+    ],
+    "additionalProperties": true,
     "properties": {
       "name": {
         "title": "Name",
         "type": "string",
-        "default": "Haier hOn"
+        "default": "hOn Wine Cooler",
+        "description": "Name for this Homebridge platform instance."
       },
       "email": {
         "title": "hOn Email",
         "type": "string",
-        "required": true
+        "description": "Email address used to sign in to the hOn app."
       },
       "password": {
         "title": "hOn Password",
         "type": "string",
-        "required": true
+        "description": "Password used to sign in to the hOn app."
+      },
+      "accessoryName": {
+        "title": "Accessory Name",
+        "type": "string",
+        "default": "Wine Cooler",
+        "description": "Name shown for the wine cooler accessory in HomeKit."
+      },
+      "pollIntervalSeconds": {
+        "title": "Status Poll Interval Seconds",
+        "type": "integer",
+        "default": 60,
+        "minimum": 60,
+        "description": "Minimum 60 seconds. Write commands are sent immediately; this only controls status refresh polling."
       },
       "autoStartBridge": {
         "title": "Auto-start Python Bridge",
         "type": "boolean",
-        "default": true
+        "default": true,
+        "description": "Start the bundled Python pyhOn bridge automatically when Homebridge starts."
       },
       "pythonPath": {
         "title": "Python Path",
         "type": "string",
-        "default": "python3.12"
+        "default": "python3.12",
+        "description": "Path to Python 3.12. For best results use the absolute path to the plugin venv Python executable."
       },
       "bridgeHost": {
         "title": "Bridge Host",
@@ -44,6 +64,11 @@
         "default": 8765,
         "minimum": 1024,
         "maximum": 65535
+      },
+      "dataDir": {
+        "title": "Bridge Data Directory",
+        "type": "string",
+        "description": "Optional. Defaults to Homebridge storage path plus hon-wine-cooler. Stores the pyhOn refresh token and cached state."
       }
     }
   },
