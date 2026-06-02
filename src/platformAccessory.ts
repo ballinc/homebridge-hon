@@ -1,148 +1,241 @@
 import type { CharacteristicValue, PlatformAccessory, Service } from 'homebridge';
+import type { HonWineCoolerPlatform } from './platform.js';
+import type { WineCoolerState, ZoneState } from './settings.js';
 
-import type { ExampleHomebridgePlatform } from './platform.js';
+function numberOrDefault(value: number | null | undefined, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
 
-/**
- * Platform Accessory
- * An instance of this class is created for each accessory your platform registers
- * Each accessory may expose multiple services of different service types.
- */
-export class ExamplePlatformAccessory {
-  private service: Service;
+function booleanOrDefault(value: boolean | null | undefined, fallback: boolean): boolean {
+  return typeof value === 'boolean' ? value : fallback;
+}
 
-  /**
-   * These are just used to create a working example
-   * You should implement your own code to track the state of your accessory
-   */
-  private exampleStates = {
-    On: false,
-    Brightness: 100,
-  };
+export class HonWineCoolerAccessory {
+  private readonly informationService: Service;
+  private readonly lightService: Service;
+  private readonly zone1ThermostatService: Service;
+  private readonly zone2ThermostatService: Service;
+  private readonly zone1HumidityService: Service;
+  private readonly zone2HumidityService: Service;
+  private readonly sabbathService: Service;
 
-  constructor(
-    private readonly platform: ExampleHomebridgePlatform,
+  public constructor(
+    private readonly platform: HonWineCoolerPlatform,
     private readonly accessory: PlatformAccessory,
   ) {
-    // set accessory information
-    this.accessory.getService(this.platform.Service.AccessoryInformation)!
-      .setCharacteristic(this.platform.Characteristic.Manufacturer, 'Default-Manufacturer')
-      .setCharacteristic(this.platform.Characteristic.Model, 'Default-Model')
-      .setCharacteristic(this.platform.Characteristic.SerialNumber, 'Default-Serial');
+    const state = this.accessory.context.device as WineCoolerState;
 
-    // get the LightBulb service if it exists, otherwise create a new LightBulb service
-    // you can create multiple services for each accessory
+    this.informationService = this.accessory.getService(this.platform.Service.AccessoryInformation)!;
 
-    if (accessory.context.device.CustomService) {
-      // This is only required when using Custom Services and Characteristics not support by HomeKit
-      this.service = this.accessory.getService(this.platform.CustomServices[accessory.context.device.CustomService]) ||
-        this.accessory.addService(this.platform.CustomServices[accessory.context.device.CustomService]);
-    } else {
-      this.service = this.accessory.getService(this.platform.Service.Lightbulb) || this.accessory.addService(this.platform.Service.Lightbulb);
+    this.lightService = this.accessory.getService(this.platform.Service.Lightbulb)
+      ?? this.accessory.addService(this.platform.Service.Lightbulb, 'Wine Cooler Light', 'light');
+
+    this.zone1ThermostatService = this.accessory.getService('Wine Cooler Zone 1')
+      ?? this.accessory.addService(this.platform.Service.Thermostat, 'Wine Cooler Zone 1', 'zone1');
+
+    this.zone2ThermostatService = this.accessory.getService('Wine Cooler Zone 2')
+      ?? this.accessory.addService(this.platform.Service.Thermostat, 'Wine Cooler Zone 2', 'zone2');
+
+    this.zone1HumidityService = this.accessory.getService('Wine Cooler Zone 1 Humidity')
+      ?? this.accessory.addService(this.platform.Service.HumiditySensor, 'Wine Cooler Zone 1 Humidity', 'zone1Humidity');
+
+    this.zone2HumidityService = this.accessory.getService('Wine Cooler Zone 2 Humidity')
+      ?? this.accessory.addService(this.platform.Service.HumiditySensor, 'Wine Cooler Zone 2 Humidity', 'zone2Humidity');
+
+    this.sabbathService = this.accessory.getService('Wine Cooler Sabbath Mode')
+      ?? this.accessory.addService(this.platform.Service.Switch, 'Wine Cooler Sabbath Mode', 'sabbath');
+
+    this.configureInformation(state);
+    this.configureLight();
+    this.configureThermostat(this.zone1ThermostatService, 1);
+    this.configureThermostat(this.zone2ThermostatService, 2);
+    this.configureHumidity(this.zone1HumidityService, 1);
+    this.configureHumidity(this.zone2HumidityService, 2);
+    this.configureSabbath();
+
+    HonWineCoolerAccessory.updateCharacteristicValues(this.platform, this.accessory, state);
+  }
+
+  public static updateCharacteristicValues(
+    platform: HonWineCoolerPlatform,
+    accessory: PlatformAccessory,
+    state: WineCoolerState,
+  ): void {
+    const information = accessory.getService(platform.Service.AccessoryInformation);
+    information?.setCharacteristic(platform.Characteristic.Manufacturer, state.manufacturer || 'Haier')
+      .setCharacteristic(platform.Characteristic.Model, state.model || 'Wine Cooler')
+      .setCharacteristic(platform.Characteristic.SerialNumber, state.serialNumber || state.macAddress);
+
+    const light = accessory.getService(platform.Service.Lightbulb);
+    light?.updateCharacteristic(platform.Characteristic.On, booleanOrDefault(state.lightOn, false));
+    light?.updateCharacteristic(platform.Characteristic.StatusActive, state.online);
+
+    const z1 = accessory.getService('Wine Cooler Zone 1');
+    const z2 = accessory.getService('Wine Cooler Zone 2');
+    HonWineCoolerAccessory.updateThermostat(platform, z1, state.zone1, state.online);
+    HonWineCoolerAccessory.updateThermostat(platform, z2, state.zone2, state.online);
+
+    const h1 = accessory.getService('Wine Cooler Zone 1 Humidity');
+    const h2 = accessory.getService('Wine Cooler Zone 2 Humidity');
+
+    h1?.updateCharacteristic(platform.Characteristic.CurrentRelativeHumidity, numberOrDefault(state.zone1.humidity, 0));
+    h1?.updateCharacteristic(platform.Characteristic.StatusActive, state.online);
+
+    h2?.updateCharacteristic(platform.Characteristic.CurrentRelativeHumidity, numberOrDefault(state.zone2.humidity, 0));
+    h2?.updateCharacteristic(platform.Characteristic.StatusActive, state.online);
+
+    const sabbath = accessory.getService('Wine Cooler Sabbath Mode');
+    sabbath?.updateCharacteristic(platform.Characteristic.On, booleanOrDefault(state.sabbathMode, false));
+    sabbath?.updateCharacteristic(platform.Characteristic.StatusActive, state.online);
+  }
+
+  private static updateThermostat(
+    platform: HonWineCoolerPlatform,
+    service: Service | undefined,
+    zone: ZoneState,
+    online: boolean,
+  ): void {
+    if (!service) {
+      return;
     }
 
-    // set the service name, this is what is displayed as the default name on the Home app
-    // in this example we are using the name we stored in the `accessory.context` in the `discoverDevices` method.
-    this.service.setCharacteristic(this.platform.Characteristic.Name, accessory.context.device.exampleDisplayName);
+    service.updateCharacteristic(
+      platform.Characteristic.CurrentHeatingCoolingState,
+      platform.Characteristic.CurrentHeatingCoolingState.COOL,
+    );
 
-    // each service must implement at-minimum the "required characteristics" for the given service type
-    // see https://developers.homebridge.io/#/service/Lightbulb
+    service.updateCharacteristic(
+      platform.Characteristic.TargetHeatingCoolingState,
+      platform.Characteristic.TargetHeatingCoolingState.COOL,
+    );
 
-    // register handlers for the On/Off Characteristic
-    this.service.getCharacteristic(this.platform.Characteristic.On)
-      .onSet(this.setOn.bind(this)) // SET - bind to the `setOn` method below
-      .onGet(this.getOn.bind(this)); // GET - bind to the `getOn` method below
+    service.updateCharacteristic(
+      platform.Characteristic.CurrentTemperature,
+      numberOrDefault(zone.currentTemperature, 0),
+    );
 
-    // register handlers for the Brightness Characteristic
-    this.service.getCharacteristic(this.platform.Characteristic.Brightness)
-      .onSet(this.setBrightness.bind(this)); // SET - bind to the `setBrightness` method below
+    service.updateCharacteristic(
+      platform.Characteristic.TargetTemperature,
+      numberOrDefault(zone.targetTemperature, 8),
+    );
 
-    /**
-     * Creating multiple services of the same type.
-     *
-     * To avoid "Cannot add a Service with the same UUID another Service without also defining a unique 'subtype' property." error,
-     * when creating multiple services of the same type, you need to use the following syntax to specify a name and subtype id:
-     * this.accessory.getService('NAME') || this.accessory.addService(this.platform.Service.Lightbulb, 'NAME', 'USER_DEFINED_SUBTYPE_ID');
-     *
-     * The USER_DEFINED_SUBTYPE must be unique to the platform accessory (if you platform exposes multiple accessories, each accessory
-     * can use the same subtype id.)
-     */
+    service.updateCharacteristic(
+      platform.Characteristic.TemperatureDisplayUnits,
+      platform.Characteristic.TemperatureDisplayUnits.CELSIUS,
+    );
 
-    // Example: add two "motion sensor" services to the accessory
-    const motionSensorOneService = this.accessory.getService('Motion Sensor One Name')
-      || this.accessory.addService(this.platform.Service.MotionSensor, 'Motion Sensor One Name', 'YourUniqueIdentifier-1');
-
-    const motionSensorTwoService = this.accessory.getService('Motion Sensor Two Name')
-      || this.accessory.addService(this.platform.Service.MotionSensor, 'Motion Sensor Two Name', 'YourUniqueIdentifier-2');
-
-    /**
-     * Updating characteristics values asynchronously.
-     *
-     * Example showing how to update the state of a Characteristic asynchronously instead
-     * of using the `on('get')` handlers.
-     * Here we change update the motion sensor trigger states on and off every 10 seconds
-     * the `updateCharacteristic` method.
-     *
-     */
-    let motionDetected = false;
-    setInterval(() => {
-      // EXAMPLE - inverse the trigger
-      motionDetected = !motionDetected;
-
-      // push the new value to HomeKit
-      motionSensorOneService.updateCharacteristic(this.platform.Characteristic.MotionDetected, motionDetected);
-      motionSensorTwoService.updateCharacteristic(this.platform.Characteristic.MotionDetected, !motionDetected);
-
-      this.platform.log.debug('Triggering motionSensorOneService:', motionDetected);
-      this.platform.log.debug('Triggering motionSensorTwoService:', !motionDetected);
-    }, 10000);
+    service.updateCharacteristic(platform.Characteristic.StatusActive, online);
   }
 
-  /**
-   * Handle "SET" requests from HomeKit
-   * These are sent when the user changes the state of an accessory, for example, turning on a Light bulb.
-   */
-  async setOn(value: CharacteristicValue) {
-    // implement your own code to turn your device on/off
-    this.exampleStates.On = value as boolean;
-
-    this.platform.log.debug('Set Characteristic On ->', value);
+  private configureInformation(state: WineCoolerState): void {
+    this.informationService
+      .setCharacteristic(this.platform.Characteristic.Manufacturer, state.manufacturer || 'Haier')
+      .setCharacteristic(this.platform.Characteristic.Model, state.model || 'Wine Cooler')
+      .setCharacteristic(this.platform.Characteristic.SerialNumber, state.serialNumber || state.macAddress)
+      .setCharacteristic(this.platform.Characteristic.Name, this.accessory.displayName);
   }
 
-  /**
-   * Handle the "GET" requests from HomeKit
-   * These are sent when HomeKit wants to know the current state of the accessory, for example, checking if a Light bulb is on.
-   *
-   * GET requests should return as fast as possible. A long delay here will result in
-   * HomeKit being unresponsive and a bad user experience in general.
-   *
-   * If your device takes time to respond you should update the status of your device
-   * asynchronously instead using the `updateCharacteristic` method instead.
-   * In this case, you may decide not to implement `onGet` handlers, which may speed up
-   * the responsiveness of your device in the Home app.
+  private configureLight(): void {
+    this.lightService.setCharacteristic(this.platform.Characteristic.Name, 'Wine Cooler Light');
 
-   * @example
-   * this.service.updateCharacteristic(this.platform.Characteristic.On, true)
-   */
-  async getOn(): Promise<CharacteristicValue> {
-    // implement your own code to check if the device is on
-    const isOn = this.exampleStates.On;
-
-    this.platform.log.debug('Get Characteristic On ->', isOn);
-
-    // if you need to return an error to show the device as "Not Responding" in the Home app:
-    // throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
-
-    return isOn;
+    this.lightService.getCharacteristic(this.platform.Characteristic.On)
+      .onGet(async () => {
+        const state = await this.platform.client.getState();
+        return booleanOrDefault(state.lightOn, false);
+      })
+      .onSet(async (value: CharacteristicValue) => {
+        const state = await this.platform.client.setLight(Boolean(value));
+        this.accessory.context.device = state;
+        HonWineCoolerAccessory.updateCharacteristicValues(this.platform, this.accessory, state);
+      });
   }
 
-  /**
-   * Handle "SET" requests from HomeKit
-   * These are sent when the user changes the state of an accessory, for example, changing the Brightness
-   */
-  async setBrightness(value: CharacteristicValue) {
-    // implement your own code to set the brightness
-    this.exampleStates.Brightness = value as number;
+  private configureThermostat(service: Service, zone: 1 | 2): void {
+    const zoneName = zone === 1 ? 'Zone 1' : 'Zone 2';
+    const state = this.accessory.context.device as WineCoolerState;
+    const zoneState = zone === 1 ? state.zone1 : state.zone2;
 
-    this.platform.log.debug('Set Characteristic Brightness -> ', value);
+    const minValue = numberOrDefault(zoneState.minTemperature, 5);
+    const maxValue = numberOrDefault(zoneState.maxTemperature, 20);
+    const minStep = numberOrDefault(zoneState.temperatureStep, 1);
+
+    service.setCharacteristic(this.platform.Characteristic.Name, `Wine Cooler ${zoneName}`);
+
+    service.getCharacteristic(this.platform.Characteristic.CurrentHeatingCoolingState)
+      .onGet(() => this.platform.Characteristic.CurrentHeatingCoolingState.COOL);
+
+    service.getCharacteristic(this.platform.Characteristic.TargetHeatingCoolingState)
+      .setProps({
+        validValues: [this.platform.Characteristic.TargetHeatingCoolingState.COOL],
+      })
+      .onGet(() => this.platform.Characteristic.TargetHeatingCoolingState.COOL)
+      .onSet(async () => {
+        return;
+      });
+
+    service.getCharacteristic(this.platform.Characteristic.CurrentTemperature)
+      .setProps({
+        minValue: -10,
+        maxValue: 40,
+        minStep: 0.1,
+      })
+      .onGet(async () => {
+        const fresh = await this.platform.client.getState();
+        const freshZone = zone === 1 ? fresh.zone1 : fresh.zone2;
+        return numberOrDefault(freshZone.currentTemperature, 0);
+      });
+
+    service.getCharacteristic(this.platform.Characteristic.TargetTemperature)
+      .setProps({
+        minValue,
+        maxValue,
+        minStep,
+      })
+      .onGet(async () => {
+        const fresh = await this.platform.client.getState();
+        const freshZone = zone === 1 ? fresh.zone1 : fresh.zone2;
+        return numberOrDefault(freshZone.targetTemperature, 8);
+      })
+      .onSet(async (value: CharacteristicValue) => {
+        const stateAfterWrite = await this.platform.client.setTargetTemperature(zone, Number(value));
+        this.accessory.context.device = stateAfterWrite;
+        HonWineCoolerAccessory.updateCharacteristicValues(this.platform, this.accessory, stateAfterWrite);
+      });
+
+    service.getCharacteristic(this.platform.Characteristic.TemperatureDisplayUnits)
+      .onGet(() => this.platform.Characteristic.TemperatureDisplayUnits.CELSIUS);
+  }
+
+  private configureHumidity(service: Service, zone: 1 | 2): void {
+    const zoneName = zone === 1 ? 'Zone 1' : 'Zone 2';
+
+    service.setCharacteristic(this.platform.Characteristic.Name, `Wine Cooler ${zoneName} Humidity`);
+
+    service.getCharacteristic(this.platform.Characteristic.CurrentRelativeHumidity)
+      .setProps({
+        minValue: 0,
+        maxValue: 100,
+        minStep: 1,
+      })
+      .onGet(async () => {
+        const state = await this.platform.client.getState();
+        const zoneState = zone === 1 ? state.zone1 : state.zone2;
+        return numberOrDefault(zoneState.humidity, 0);
+      });
+  }
+
+  private configureSabbath(): void {
+    this.sabbathService.setCharacteristic(this.platform.Characteristic.Name, 'Wine Cooler Sabbath Mode');
+
+    this.sabbathService.getCharacteristic(this.platform.Characteristic.On)
+      .onGet(async () => {
+        const state = await this.platform.client.getState();
+        return booleanOrDefault(state.sabbathMode, false);
+      })
+      .onSet(async (value: CharacteristicValue) => {
+        const state = await this.platform.client.setSabbath(Boolean(value));
+        this.accessory.context.device = state;
+        HonWineCoolerAccessory.updateCharacteristicValues(this.platform, this.accessory, state);
+      });
   }
 }

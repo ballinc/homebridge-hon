@@ -11,8 +11,55 @@
       "name": {
         "title": "Name",
         "type": "string",
-        "default": "Example Dynamic Platform"
+        "default": "Haier hOn"
+      },
+      "email": {
+        "title": "hOn Email",
+        "type": "string",
+        "required": true
+      },
+      "password": {
+        "title": "hOn Password",
+        "type": "string",
+        "required": true
+      },
+      "autoStartBridge": {
+        "title": "Auto-start Python Bridge",
+        "type": "boolean",
+        "default": true
+      },
+      "pythonPath": {
+        "title": "Python Path",
+        "type": "string",
+        "default": "python3.12"
+      },
+      "bridgeHost": {
+        "title": "Bridge Host",
+        "type": "string",
+        "default": "127.0.0.1"
+      },
+      "bridgePort": {
+        "title": "Bridge Port",
+        "type": "integer",
+        "default": 8765,
+        "minimum": 1024,
+        "maximum": 65535
       }
     }
-  }
+  },
+  "form": [
+    "name",
+    "email",
+    {
+      "key": "password",
+      "type": "password"
+    },
+    "accessoryName",
+    "pollIntervalSeconds",
+    "autoStartBridge",
+    "pythonPath",
+    "bridgeHost",
+    "bridgePort",
+    "dataDir"
+  ]
 }

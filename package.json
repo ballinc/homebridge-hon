@@ -27,7 +27,8 @@
     "build": "rimraf ./dist && tsc",
     "lint": "eslint . --max-warnings=0",
     "prepublishOnly": "npm run lint && npm run build",
-    "watch": "npm run build && npm link && nodemon"
+    "watch": "npm run build && npm link && nodemon",
+    "start-bridge": "./.venv/bin/python bridge/hon_bridge.py"
   },
   "dependencies": {
     "homebridge-lib": "^8.0.1"
